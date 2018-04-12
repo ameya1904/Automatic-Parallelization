@@ -7,13 +7,13 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include<iostream>
+#include <iostream>
 #include "clang/AST/Stmt.h"
 #include "clang/AST/Expr.h"
 #include "clang/Basic/LLVM.h"
-#include<string>
-#include<utility>
-#include<algorithm>
+#include <string>
+#include <utility>
+#include <algorithm>
 #include <math.h>
 
 using namespace std;
@@ -22,6 +22,7 @@ using namespace llvm;
 using namespace clang;
 using namespace clang::ast_matchers;
 
+ASTContext* Context;
 static llvm::cl::OptionCategory MyToolCategory("my-tool options");
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp("\nMore help text...");
@@ -55,7 +56,8 @@ struct var_id_struct{
 	vector<struct var_struct> matrix;
 };
 vector<struct var_id_struct>var_id_obj;
-
+vector<pair<int,SourceLocation>> stmt_loc;
+vector<pair<SourceLocation,SourceLocation>> if_locations;
 class dep_analyser{
 	
 	private:
@@ -115,8 +117,6 @@ class dep_analyser{
                 a=data[0][i];
                 b=data[1][i];
                 
-               
-                    
                 l=loop[i][0];
                 u=loop[i][1];
                 n=loop[i][2];
@@ -162,7 +162,7 @@ class dep_analyser{
 	        else{
 	            dep=false;
 	        }
-	        cout<<lb<<"\t"<<x<<"\t"<<ub<<"\t"<<dep<<"\n";
+	        //cout<<lb<<"\t"<<x<<"\t"<<ub<<"\t"<<dep<<"\n";
 	        return dep;
 	    }
 	    
@@ -202,7 +202,7 @@ class dep_analyser{
 	        for(int i=0;i<nest;i++){
 	            choice+='s';
 	        }
-	        cout<<"Choice\tLB\tX\tUB\tBool\n"<<choice<<"\t";
+	        //cout<<"Choice\tLB\tX\tUB\tBool\n"<<choice<<"\t";
 	        if(this->banerjee(choice)){
 	            analyse_recursive(1,choice);
 	        }   
@@ -224,7 +224,7 @@ class dep_analyser{
 	        backup.assign(choice);
 	        for(int i=0;i<3;i++){
 	            choice[level-1]=meta[i];
-	            cout<<choice<<"\t";
+	            //cout<<choice<<"\t";
 	            if(this->banerjee(choice)){
 	                if(level>true_level){
 	                    true_level=level;
@@ -246,8 +246,13 @@ struct edge{
     vector<string> dep_vector;
     int begin,end;
 };
+struct edge2{
+    string dep_vector;
+    int begin,end;
+    int type;
+};
 vector<struct edge> edge_vector;
-
+vector<struct edge2> final_edge;
 class dependance_framework{
     private:
         int nest,dim;
@@ -278,6 +283,10 @@ class dependance_framework{
         void get_dependance(){
             vector<vector<int>> tmp;
             vector<string> tmp_result[dim];
+            string init="";
+            for(int i=0;i<nest;i++){
+	            init+='s';
+	        }
             for(int i=0;i<dim;i++){
                 tmp.push_back(data1[i]);
                 tmp.push_back(data2[i]);
@@ -286,10 +295,19 @@ class dependance_framework{
                 tmp_result[i]=obj.result;
                 tmp.clear();
             }
+            if(dim==1){
+                result=tmp_result[0];
+                return;
+            }
             for(int i=0;i<dim-1;i++){
                 for(vector<string>::iterator j= tmp_result[i].begin();j!=tmp_result[i].end();j++){
                     for(vector<string>::iterator k= tmp_result[i+1].begin();k!=tmp_result[i+1].end();k++){
-	                    //cout<<*j<<"\t";
+                        if(tmp_result[i+1].size()<1){
+                            //cout<<"qwewq"<<*j;
+                            result.push_back(*j);
+                            continue;
+                        }
+	                    //cout<<"asd\t"<<*j<<"\t"<<*k<<"\n";
 	                    string tmp;
 	                    tmp.assign(product(*j,*k));
 	                    if(is_valid(tmp)){
@@ -298,9 +316,9 @@ class dependance_framework{
                     }
 	            }
             }
-            for(vector<string>::iterator j= result.begin();j!=result.end();j++){
-                cout<<*j<<"\n";
-            }
+            /*for(vector<string>::iterator j= result.begin();j!=result.end();j++){
+                cout<<"sss"<<*j<<"\n";
+            }*/
         }
         
         bool is_valid(string result){
@@ -309,7 +327,7 @@ class dependance_framework{
                 if(result[i]=='x'){
                     val=false;
                 }
-            }cout<<val;
+            }//cout<<val;
             return val;
         }
         
@@ -334,21 +352,56 @@ class dependance_framework{
                         }
                         cout<<"dim\t"<<j->coeff.size()<<"nest\t"<<j->enclosers.size()<<"\n";
                         */
-                        struct edge tmp;
-                        tmp.begin=j->stmt_num;
-                        tmp.end=k->stmt_num;
+                        struct edge2 tmp;
                         
                         if(j->loop==k->loop){
-                            cout<<"yes\n";
+                            //cout<<"yes\n";
                             set_data(j->coeff.size(),j->enclosers.size()-1,j->loop,j->coeff,k->coeff);
                             get_dependance();
-                            tmp.dep_vector=result;
+                            vector<struct edge2> eo_vector= eo_calc(j->stmt_num,k->stmt_num);
+                            
+                            for(vector<string>::iterator m=result.begin();m!=result.end();m++){
+                                cout<<"poi\t"<<*m<<"\n";
+                                bool found=false;
+                                for(vector<struct edge2>::iterator n=eo_vector.begin();n!=eo_vector.end() && !found;n++){
+                                    cout<<"zxc\t"<<n->begin<<"\t"<<n->end<<"\t"<<n->dep_vector<<"\n";
+                                    string tmp2;
+                                    tmp2.assign(product(*m,n->dep_vector));
+                                    cout<<"try\t"<<tmp2<<"\t"<<is_valid(tmp2)<<"\n";
+                                    if(j->is_def){
+                                        if(k->is_def){
+                                            tmp.type=2;
+                                        }
+                                        else{
+                                            tmp.type=0;
+                                        }
+                                    }
+                                    else{
+                                        if(k->is_def){
+                                            tmp.type=1;
+                                        }
+                                    }
+                                    if(is_valid(tmp2)){
+                                        found=true;
+                                        tmp.begin=n->begin;
+                                        tmp.end=n->end;
+                                        tmp.dep_vector=tmp2;
+                                        final_edge.push_back(tmp);
+                                    }
+                                }
+                            }
+                            
                         }
                         else{
-                            cout<<"no\n";
-                            tmp.dep_vector.push_back("ss");
+                            //cout<<"no\n";
+                            string def="";
+                            for(int i=0;i<nest;i++){
+                                def+='s';
+                            }
+                            tmp.dep_vector=def;
+                            final_edge.push_back(tmp);
                         }
-                        edge_vector.push_back(tmp);
+                        
                         
                     }
                 }
@@ -376,4 +429,144 @@ class dependance_framework{
             }
             return result;
         }
+        
+        vector<struct edge2> eo_calc(int n1,int n2){
+            int found=0;
+            SourceLocation loc1,loc2;
+		    vector<string> exec_vec;
+            for(vector<pair<int,SourceLocation>>::iterator i=stmt_loc.begin();i!=stmt_loc.end() && found!=2;i++){
+                if(i->first==n1){
+                    loc1=i->second;
+                    found++;
+                }
+                if(i->first==n2){
+                    loc2=i->second;
+                    found++;
+                }
+            }
+            
+            if(found!=2){
+                cout<<"Error:Invalid Statement Number\n";
+                //return;
+            }
+            
+            vector<int> q1,q2;
+            //cout<<"qwe\t"<<n1<<"\t"<<n2<<"\n";print_loc(loc1);print_loc(loc2);
+            for(vector<pair<SourceLocation,SourceLocation>>::iterator i=if_locations.begin();i!=if_locations.end();i++){
+                //print_loc(i->first);print_loc(i->second);
+                if(loc1.getRawEncoding()>=i->first.getRawEncoding() && loc1.getRawEncoding()<=i->second.getRawEncoding()){
+                    q1.push_back(1);
+                }
+                else{
+                    q1.push_back(0);
+                }
+                
+                if(loc2.getRawEncoding()>=i->first.getRawEncoding() && loc2.getRawEncoding()<=i->second.getRawEncoding()){
+                    q2.push_back(1);
+                }
+                else{
+                    q2.push_back(0);
+                }
+            }
+            
+            string tmp="";
+            //cout<<"dim\t"<<dim;
+            for(int i=0;i<nest;i++){
+                tmp+='e';
+            }
+            vector<struct edge2> eo_vector;
+            struct edge2 tmp2;
+            if(q1==q2){
+                //cout<<"1111\n";
+                
+                if(n1==n2){
+                    tmp[0]='l';
+                    for(int i=1;i<nest;i++){
+                        tmp[i]='s';
+                    }
+                    tmp2.dep_vector=tmp;
+                    tmp2.begin=n1;
+                    tmp2.end=n2;
+                    eo_vector.push_back(tmp2);
+                    tmp2.begin=n2;
+                    tmp2.end=n1;
+                    eo_vector.push_back(tmp2);
+                    //cout<<"\t"<<tmp<<"\n";
+                }
+                else{
+                    if(n1<n2){
+                        tmp2.dep_vector=tmp;
+                        tmp2.begin=n1;
+                        tmp2.end=n2;
+                        eo_vector.push_back(tmp2);
+                    }
+                    else{
+                        tmp2.dep_vector=tmp;
+                        tmp2.begin=n2;
+                        tmp2.end=n1;
+                        eo_vector.push_back(tmp2);
+                    }
+                    for(int i=nest-1;i>-1;i--){
+                        
+                        for(int j=i;j<nest;j++){
+                            tmp[j]='s';
+                        }
+                        tmp[i]='l';
+                        tmp2.dep_vector=tmp;
+                        tmp2.begin=n1;
+                        tmp2.end=n2;
+                        eo_vector.push_back(tmp2);
+                        tmp2.begin=n2;
+                        tmp2.end=n1;
+                        eo_vector.push_back(tmp2);
+                        //cout<<"\t"<<tmp<<"\n";
+                    }
+                }
+            }
+            else{
+                //cout<<"0000\n";
+                
+                if(n1==n2){
+                    tmp[0]='l';
+                    for(int i=1;i<nest;i++){
+                        tmp[i]='s';
+                    }
+                    tmp2.dep_vector=tmp;
+                    tmp2.begin=n1;
+                    tmp2.end=n2;
+                    eo_vector.push_back(tmp2);
+                    tmp2.begin=n2;
+                    tmp2.end=n1;
+                    eo_vector.push_back(tmp2);
+                    //cout<<"\t"<<tmp<<"\n";
+                }
+                else{
+                    
+                    for(int i=nest-1;i>-1;i--){
+                        
+                        for(int j=i;j<nest;j++){
+                            tmp[j]='s';
+                        }
+                        tmp[i]='l';
+                        tmp2.dep_vector=tmp;
+                        tmp2.begin=n1;
+                        tmp2.end=n2;
+                        eo_vector.push_back(tmp2);
+                        tmp2.begin=n2;
+                        tmp2.end=n1;
+                        eo_vector.push_back(tmp2);
+                        //cout<<"\t"<<tmp<<"\n";
+                    }
+                    
+                }
+            }
+            return eo_vector;
+        }
+        
+        void print_loc(SourceLocation loc){
+		    FullSourceLoc FullLocation = Context->getFullLoc(loc);
+		    llvm::outs() << "Found stmt at "<<"\t" << FullLocation.getSpellingLineNumber()<< ":" <<     FullLocation.getSpellingColumnNumber() << "\n";
+		}
+		
 };
+

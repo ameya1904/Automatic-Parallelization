@@ -111,9 +111,10 @@ class LoopPrinter : public MatchFinder::MatchCallback {
 
 class LoopPrinter2 : public MatchFinder::MatchCallback {
 	private:
-		ASTContext* Context;
+		
 		vector<Expr*> indices;
 		vector<const Stmt*> nodes;
+		vector<BinaryOperator*> if_body; 
 		struct expr{
 			string obj;
 			int type;
@@ -130,15 +131,92 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 					const Stmt* tmp = *i;
 					//FullSourceLoc FullLocation = Context->getFullLoc(tmp->getLocStart());
 					//llvm::outs() << "Found stmt at "<<is_it_loop(tmp->getLocStart())<<"\t" << FullLocation.getSpellingLineNumber()<< ":" <<     FullLocation.getSpellingColumnNumber() << "\n";
-
+                    
 					if(isa<BinaryOperator>(tmp)){
 						stmt_handle(tmp);
+						stmt_loc.push_back(make_pair(stmt_num,tmp->getLocStart()));
 						stmt_num++;
+					}
+					else if(isa<IfStmt>(tmp)){
+					    //tmp->dump();
+					    
+					    IfStmt* fi = (IfStmt*)tmp;
+					    if_handle(fi);
+					    
+					    for(vector<BinaryOperator*>::iterator i=if_body.begin();i!=if_body.end();i++){
+					        //(*i)->dump();
+					        stmt_handle(*i);
+					        stmt_loc.push_back(make_pair(stmt_num,(*i)->getLocStart()));
+						    stmt_num++;
+					    }
 					}
 
 				}
 			}
 
+		}
+		
+		void print_loc(IfStmt* loc){
+		    FullSourceLoc FullLocation = Context->getFullLoc(loc->getIfLoc());
+		    llvm::outs() << "Found stmt at "<<"\t" << FullLocation.getSpellingLineNumber()<< ":" <<     FullLocation.getSpellingColumnNumber() << "\t"<<loc->getIfLoc().getRawEncoding()<<"\n";
+		    FullLocation = Context->getFullLoc(loc->getElseLoc());
+		    llvm::outs() << "Found stmt at "<<"\t" << FullLocation.getSpellingLineNumber()<< ":" <<     FullLocation.getSpellingColumnNumber() << "\t"<<loc->getElseLoc().getRawEncoding()<<"\n";
+		}
+		
+		void if_handle(IfStmt* fi){ 
+		    if(fi->getElseLoc().getRawEncoding()==0){
+		        if_locations.push_back(make_pair(fi->getIfLoc(),fi->getLocEnd()));    
+		    }
+		    else{
+		        if_locations.push_back(make_pair(fi->getIfLoc(),fi->getElseLoc()));
+	        }
+		    Stmt *body= fi->getThen(),*else_=fi->getElse();
+		    if(!body){
+		        return;
+		    }
+		    if(isa<CompoundStmt>(body)){
+		        CompoundStmt* cs =(CompoundStmt*)(body);
+		        for(Stmt::child_iterator i=cs->child_begin();i!=cs->child_end();i++){
+		            
+		            if(isa<IfStmt>(*i)){
+		                if_handle((IfStmt*)(*i));
+		            }
+		            
+		            if(isa<BinaryOperator>(*i)){
+		                //(*i)->dump();
+		                if_body.push_back((BinaryOperator*)(*i));
+		            }
+		        }
+		    }
+		    else if(isa<BinaryOperator>(body)){
+		        //body->dump();
+		        if_body.push_back((BinaryOperator*)(body));
+		    }
+		    
+		    if(!else_){
+		        return;
+		    }
+		    if(isa<IfStmt>(else_)){
+		        if_handle((IfStmt*)else_);
+		    }
+		    else{
+		        if_locations.push_back(make_pair(else_->getLocStart(),fi->getLocEnd()));
+		        if(isa<CompoundStmt>(else_)){
+		        CompoundStmt* cs =(CompoundStmt*)(else_);
+		        for(Stmt::child_iterator i=cs->child_begin();i!=cs->child_end();i++){
+		            
+		            if(isa<IfStmt>(*i)){
+		                if_handle((IfStmt*)(*i));
+		            }
+		            
+		            if(isa<BinaryOperator>(*i)){
+		                //(*i)->dump();
+		                if_body.push_back((BinaryOperator*)(*i));
+		            }
+		        }
+		    }
+		    }
+		    
 		}
 
 		void stmt_handle(const Stmt* stmt){
@@ -224,6 +302,7 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 		struct var_struct node_handler(Expr* e,BinaryOperator* b){
 			struct var_struct var_obj=getOuterLoops(b->getLocStart());
 			var_obj.stmt_num=stmt_num;
+			
 			if(isa<ImplicitCastExpr>(e)){
 				var_obj.is_array=false;
 				Expr* name_node=e;
@@ -236,15 +315,22 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 					}
 				}
 			}
+			
+			else if(isa<DeclRefExpr>(e)){
+			    var_obj.is_array=false;
+			    DeclRefExpr* dre = (DeclRefExpr*)(e);
+				//cout<<dre->getFoundDecl()->getNameAsString()<<"\n";
+				var_obj.var.assign(dre->getFoundDecl()->getNameAsString());
+			}
 
 			else{
 				var_obj.is_array=true;
 				Expr* name_node;
 				//e->dump();
 				handle(e,&name_node);
-				for(vector<Expr*>::iterator i=indices.begin();i!=indices.end();i++){
+				/*for(vector<Expr*>::iterator i=indices.begin();i!=indices.end();i++){
 				    (*i)->dump();
-				}cout<<"\n\n";
+				}cout<<"\n\n";*/
 				//name_node->dump();
 				if(isa<ImplicitCastExpr>(name_node)){
 					Stmt::const_child_iterator i=name_node->child_begin();
@@ -257,9 +343,9 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 
 				for(vector<Expr*>::iterator i = indices.begin();i!=indices.end();i++){
 					parseExpr(*i);
-					for(vector<expr>::iterator i=infix.begin();i!=infix.end();i++){
+					/*for(vector<expr>::iterator i=infix.begin();i!=infix.end();i++){
 					    cout<<i->obj<<"\t";
-					}cout<<"\n";
+					}cout<<"\n";*/
 					getCoefficient(&var_obj);
 					infix.clear();
 				}
@@ -367,19 +453,19 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 					else if(infix[i].obj.compare("-")==0){
 						if(op1.type<3){
 							//cout<<"const coeff\t"<<op1.obj<<"\n";
-							insertAtPos(obj,"__const__",stoi(op1.obj));
+							insertAtPos(obj,"__const__",stoi('-'+op1.obj));
 						}
 						if(op2.type<3){
 							//cout<<"const coeff\t"<<op2.obj<<"\n";
-							insertAtPos(obj,"__const__",stoi(op2.obj));
+							insertAtPos(obj,"__const__",stoi('-'+op2.obj));
 						}
 						if(op1.type==3){
 							//cout<<op1.obj<<"\t-1\n";
-							insertAtPos(obj,op1.obj,-1);
+							insertAtPos(obj,op1.obj,1);
 						}
 						if(op2.type==3){
 							//cout<<op2.obj<<"\t-1\n";
-							insertAtPos(obj,op2.obj,-1);
+							insertAtPos(obj,op2.obj,1);
 						}
 					}
 					struct expr tmp = {"$",4};
@@ -492,13 +578,18 @@ void print_node(struct var_struct obj){
 int main(int argc, const char **argv) {
         CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
         ClangTool Tool(OptionsParser.getCompilations(),OptionsParser.getSourcePathList());
+        
         LoopPrinter Printer;
         LoopPrinter2 Printer2;
+        
         MatchFinder Finder,Finder2;
+        
         Finder.addMatcher(LoopMatcher, &Printer);
         Finder2.addMatcher(LoopMatcher2, &Printer2);
+        
         Tool.run(newFrontendActionFactory(&Finder).get());
         Tool.run(newFrontendActionFactory(&Finder2).get());
+        
         dependance_framework obj;
         
         for(int i=0;i<array_id_obj.size();i++){
@@ -510,7 +601,10 @@ int main(int argc, const char **argv) {
         for(vector<loop_struct>::iterator i=loop_data.begin();i!=loop_data.end();i++){
             cout<<i->lower_bound<<"\t"<<i->upper_bound<<"\t"<<i->inc<<"\n";
         }
-        obj.analyse();
+        obj.analyse();cout<<"\n";
+        for(vector<struct edge2>::iterator i=final_edge.begin();i!=final_edge.end();i++){
+            cout<<i->begin<<"\t"<<i->end<<"\t"<<i->dep_vector<<"\t"<<i->type<<"\n";
+        }
           /*for(int i=0;i<var_id_obj.size();i++){
           cout<<"--------"<<var_id_obj[i].id<<"---------"<<"\n";
           for(int j=0;j<var_id_obj[i].matrix.size();j++){
