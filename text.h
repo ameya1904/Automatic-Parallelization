@@ -162,7 +162,7 @@ class dep_analyser{
 	        else{
 	            dep=false;
 	        }
-	        //cout<<lb<<"\t"<<x<<"\t"<<ub<<"\t"<<dep<<"\n";
+	        cout<<lb<<"\t"<<x<<"\t"<<ub<<"\t"<<dep<<"\n";
 	        return dep;
 	    }
 	    
@@ -187,7 +187,7 @@ class dep_analyser{
 	        else{
 	            dep=false;
 	        }
-	        //cout<<gcd_<<"\t"<<x<<"\t"<<dep<<"\n";
+	        cout<<gcd_<<"\t"<<x<<"\t"<<dep<<"\n";
 	        return dep;
 	    }
 	    
@@ -202,7 +202,7 @@ class dep_analyser{
 	        for(int i=0;i<nest;i++){
 	            choice+='s';
 	        }
-	        //cout<<"Choice\tLB\tX\tUB\tBool\n"<<choice<<"\t";
+	        cout<<"Choice\tLB\tX\tUB\tBool\n"<<choice<<"\t";
 	        if(this->banerjee(choice)){
 	            analyse_recursive(1,choice);
 	        }   
@@ -224,7 +224,7 @@ class dep_analyser{
 	        backup.assign(choice);
 	        for(int i=0;i<3;i++){
 	            choice[level-1]=meta[i];
-	            //cout<<choice<<"\t";
+	            cout<<choice<<"\t";
 	            if(this->banerjee(choice)){
 	                if(level>true_level){
 	                    true_level=level;
@@ -335,25 +335,11 @@ class dependance_framework{
             for(vector<struct array_id_struct>::iterator i=array_id_obj.begin();i!=array_id_obj.end();i++){
                 for(vector<struct var_struct>::iterator j=i->matrix.begin();(j)!=i->matrix.end();j++){
                     for(vector<struct var_struct>::iterator k=j+1;(k)!=i->matrix.end();k++){
-                        /*
-                        print_node(*j);
-                        print_node(*k);
-                        for(int l=0;l<j->loop.size();l++){
-                            for(int m=0;m<j->loop[l].size();m++){
-                                cout<<j->loop[l][m]<<"\t";
-                            }
-                            cout<<"\n";
-                        }
-                        for(int l=0;l<k->loop.size();l++){
-                            for(int m=0;m<k->loop[l].size();m++){
-                                cout<<k->loop[l][m]<<"\t";
-                            }
-                            cout<<"\n";
-                        }
-                        cout<<"dim\t"<<j->coeff.size()<<"nest\t"<<j->enclosers.size()<<"\n";
-                        */
+                        print_node(*j);cout<<"\n";print_node(*k);cout<<"is_def\t"<<j->is_def<<"\t"<<k->is_def<<"\n";
                         struct edge2 tmp;
-                        
+                        if(!j->is_def && !k->is_def){
+                            continue;
+                        }
                         if(j->loop==k->loop){
                             //cout<<"yes\n";
                             set_data(j->coeff.size(),j->enclosers.size()-1,j->loop,j->coeff,k->coeff);
@@ -361,24 +347,54 @@ class dependance_framework{
                             vector<struct edge2> eo_vector= eo_calc(j->stmt_num,k->stmt_num);
                             
                             for(vector<string>::iterator m=result.begin();m!=result.end();m++){
-                                cout<<"poi\t"<<*m<<"\n";
+                                cout<<"dep\t"<<*m<<"\n";
                                 bool found=false;
                                 for(vector<struct edge2>::iterator n=eo_vector.begin();n!=eo_vector.end() && !found;n++){
-                                    cout<<"zxc\t"<<n->begin<<"\t"<<n->end<<"\t"<<n->dep_vector<<"\n";
+                                    cout<<"exec\t"<<n->begin<<"\t"<<n->end<<"\t"<<n->dep_vector<<"\n";
                                     string tmp2;
                                     tmp2.assign(product(*m,n->dep_vector));
-                                    cout<<"try\t"<<tmp2<<"\t"<<is_valid(tmp2)<<"\n";
-                                    if(j->is_def){
-                                        if(k->is_def){
-                                            tmp.type=2;
+                                    cout<<"dep x exec\t"<<tmp2<<"\t"<<is_valid(tmp2)<<"\n";
+                                    /*if(j->is_def){
+                                        if(j->stmt_num!=k->stmt_num){
+                                            if(k->is_def){
+                                                tmp.type=2;
+                                            }
+                                            else{
+                                                tmp.type=0;
+                                            }
                                         }
                                         else{
-                                            tmp.type=0;
+                                            tmp.type=1;
                                         }
                                     }
                                     else{
                                         if(k->is_def){
                                             tmp.type=1;
+                                        }
+                                    }*/
+                                    if(j->stmt_num==k->stmt_num){
+                                        tmp.type=1;
+                                    }
+                                    else if(j->stmt_num<k->stmt_num){
+                                        if(j->is_def && k->is_def){
+                                            tmp.type=2;
+                                        }
+                                        else if(j->is_def && !k->is_def){
+                                            tmp.type=0;
+                                        }
+                                        else if(!j->is_def && k->is_def){
+                                            tmp.type=1;
+                                        }
+                                    }
+                                    else{
+                                        if(j->is_def && k->is_def){
+                                            tmp.type=2;
+                                        }
+                                        else if(j->is_def && !k->is_def){
+                                            tmp.type=1;
+                                        }
+                                        else if(!j->is_def && k->is_def){
+                                            tmp.type=0;
                                         }
                                     }
                                     if(is_valid(tmp2)){
@@ -479,7 +495,7 @@ class dependance_framework{
             if(q1==q2){
                 //cout<<"1111\n";
                 
-                if(n1==n2){
+                /*if(n1==n2){
                     tmp[0]='l';
                     for(int i=1;i<nest;i++){
                         tmp[i]='s';
@@ -493,7 +509,7 @@ class dependance_framework{
                     eo_vector.push_back(tmp2);
                     //cout<<"\t"<<tmp<<"\n";
                 }
-                else{
+                else{*/
                     if(n1<n2){
                         tmp2.dep_vector=tmp;
                         tmp2.begin=n1;
@@ -521,7 +537,7 @@ class dependance_framework{
                         eo_vector.push_back(tmp2);
                         //cout<<"\t"<<tmp<<"\n";
                     }
-                }
+                //}
             }
             else{
                 //cout<<"0000\n";

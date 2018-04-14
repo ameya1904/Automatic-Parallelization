@@ -11,13 +11,14 @@ class LoopPrinter : public MatchFinder::MatchCallback {
 			SourceManager *sm=Result.SourceManager;
 			Context = Result.Context;
 			struct loop_struct loop_tmp;
+			string loop_cond;
 			if (const ForStmt *fl = Result.Nodes.getNodeAs<clang::ForStmt>("forLoop")){ 
 				FullSourceLoc FullLocation = Context->getFullLoc(fl->getLocEnd());
 				if (FullLocation.isValid()) {
 					//llvm::outs() << "Found call at " << FullLocation.getSpellingLineNumber()<< ":" << FullLocation.getSpellingColumnNumber() << "\n";
 					loop_tmp.lower_bound=getInitValue(fl->getInit());
 					loop_tmp.inc=getIncBy(fl->getInc());
-					loop_tmp.upper_bound=getCondition(fl->getCond(),loop_tmp.loop_var);
+					loop_tmp.upper_bound=getCondition(fl->getCond(),loop_tmp.loop_var,loop_cond);
 					loop_tmp.start=fl->getLocStart();
 					loop_tmp.end=fl->getLocEnd();
 					loop_data.push_back(loop_tmp);
@@ -25,12 +26,15 @@ class LoopPrinter : public MatchFinder::MatchCallback {
 			}
 		}
 
-		int getCondition(const Expr* e,string& str){
+		int getCondition(const Expr* e,string& str,string& loop_cond){
 			int val;
 			//FullSourceLoc FullLocation = Context->getFullLoc(e->getLocStart());
 			//llvm::outs() << "Found condn at " << FullLocation.getSpellingLineNumber()<< ":" << FullLocation.getSpellingColumnNumber() << "\n";
 			if(isa<BinaryOperator>(e)){
 				BinaryOperator* b = (BinaryOperator*)e;
+				StringRef op = b->getOpcodeStr();
+				loop_cond.assign(op.str());
+				
 				Expr* rhs = b->getRHS();
 				if(isa<IntegerLiteral>(rhs)){
 					val = intEvaluate(rhs);
@@ -390,12 +394,96 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 				obj->coeff[index-1][j-1]=num;
 			}
 		}
+		
+		void compress(){
+		
+		    vector<int> erase_list;
+		    int count=0;
+		    for(vector<struct expr>::iterator i=infix.begin();i!=infix.end();i++){
+		        if(i->type==5){
+		            i->obj="+";
+		            i->type=99;
+		            erase_list.push_back(count);
+		            if((i+1)->type==3){
+		                (i+1)->type=6;
+		            }
+		            else if((i+1)->type==1){
+		                (i+1)->obj="-"+(i+1)->obj;
+		            }
+		        }
+		        else if(i->type==0){
+		            if(i->obj.compare("-")==0){
+		                i->obj="+";
+		                if((i+1)->type==3){
+		                    (i+1)->type=6;
+		                }
+		                else if((i+1)->type==1){
+		                    (i+1)->obj="-"+(i+1)->obj;
+		                }
+		            }
+		        }
+		        count++;
+		    }
+		    for(int i=erase_list.size()-1;i>-1;i--){
+		        infix.erase(infix.begin()+erase_list[i]);
+		    }
+		    
+		    for(int i=0;i<infix.size();i++){
+				cout<<"\t"<<infix[i].obj    <<"\t";}cout<<"\n";
+				
+			for(int i=0;i<infix.size();i++){
+				cout<<"\t"<<infix[i].type       <<"\t";}cout<<"\n";
+		    
+			stack<struct expr> operator_stack;
+			vector<struct expr> output;
+			
+			for (unsigned i = 0; i < infix.size(); i++) {
+                if (infix[i].obj.compare("+")==0  || infix[i].obj.compare("-")==0 || infix[i].obj.compare("*")==0 || infix[i].obj.compare("*")==0){
+                    while (!operator_stack.empty() && priority(operator_stack.top().obj) <= priority(infix[i].obj)) {
+                        output.push_back(operator_stack.top());
+                        operator_stack.pop();
+                    }
+                    operator_stack.push(infix[i]);
+                }  else {
+                    output.push_back(infix[i]);
+                }
+            }
+            
+            while (!operator_stack.empty()) {
+                output.push_back(operator_stack.top());
+                operator_stack.pop();
+            }
+            
+            infix=output;
+		}
+        
+        int priority(string a) 
+        {
+             int temp;
+             if( a.compare("^")==0){
+                 temp = 1;
+             }
+             else
+             {
+                 if(a.compare("*")==0|| a.compare("/")==0){
+                      temp = 2;
+                 }
+                 else
+                 {
+                     if(a.compare("+")==0 || a.compare("-")==0)
+                          temp = 3;
+                 }
+             }
+             return temp;
+        }
 
+        
 		void getCoefficient(struct var_struct *obj){
 			stack<struct expr> stack_;
 			string operatore;
 			vector<int> coeff;
-
+            compress();
+            
 			for(int i=0;i<obj->enclosers.size();i++){
 				coeff.push_back(0);
 			}
@@ -406,30 +494,156 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 				if(infix[0].type==3){
 				    insertAtPos(obj,infix[0].obj,1);
 			    }
+			    else if(infix[0].type==6){
+			        insertAtPos(obj,infix[0].obj,-1);
+			    }
 			    else{
 			        insertAtPos(obj,"__const__",stoi(infix[0].obj));
 			    }
 			}
+			
 			for(int i=0;i<infix.size();i++){
-				//cout<<"\t"<<infix[i].obj<<"\t";
-				if(infix[i].type!=0){
+				cout<<"\t"<<infix[i].obj    <<"\t";}cout<<"\n";
+				
+			for(int i=0;i<infix.size();i++){
+				cout<<"\t"<<infix[i].type       <<"\t";}cout<<"\n";
+			
+			struct expr op1,op2,tmp={"$",4};
+			for(int i=0;i<infix.size();i++){
+				//cout<<"\t"<<infix[i].obj    <<"\t";
+				if(infix[i].type!=0 && infix[i].type!=5){
 					stack_.push(infix[i]);
 				}
+				
 				else if(infix[i].type==0){
-					struct expr op1=stack_.top();
+					op1=stack_.top();
 					stack_.pop();
-					struct expr op2=stack_.top();
+					op2=stack_.top();
 					stack_.pop();
-					if((infix[i].obj.compare("*")==0 || infix[i].obj.compare("/")==0)){
+					
+					
+					if(infix[i].obj.compare("*")==0){
+					    if(op1.type==3){
+					        if(op2.type<3){
+					            insertAtPos(obj,op1.obj,stoi(op2.obj));
+					        }
+					        else if(op2.type==6){
+					            //insertAtPos(obj,op1.obj,stoi(op2.obj));
+					        }
+					        else if(op2.type==7){
+					            //case of -j*i
+					        }
+					    }
+					    else if(op1.type<3){
+					        if(op2.type<3){
+					            int val=stoi(op2.obj)*stoi(op2.obj);
+					            insertAtPos(obj,"__const__",val);
+					        }
+					        else if(op2.type==3){
+					            insertAtPos(obj,op2.obj,stoi(op1.obj));
+					        }
+					        else if(op2.type==6){
+					            int val=-1*stoi(op1.obj);
+					            insertAtPos(obj,op2.obj,val);
+					        }
+					    }
+					    else if(op1.type==6){
+					        if(op2.type<3){
+					            insertAtPos(obj,op1.obj,-1*stoi(op2.obj));
+					        }
+					    }
+					}
+					else if(infix[i].obj.compare("+")==0){
+					    if(op1.type<3){
+					        if(op2.type<3){
+					            insertAtPos(obj,"__const__",stoi(op1.obj)+stoi(op2.obj));
+					            string s="";
+					            s+=stoi(op1.obj)+stoi(op2.obj);
+					            tmp={s,1};
+				            }
+				            else if(op2.type==3) {
+				                insertAtPos(obj,"__const__",stoi(op1.obj));
+				                insertAtPos(obj,op2.obj,1);
+				            }
+				            else if(op2.type==6){
+				                insertAtPos(obj,"__const__",stoi(op1.obj));
+				                insertAtPos(obj,op2.obj,-1);
+				            }
+				            else if(op2.type==4){
+				                insertAtPos(obj,"__const__",stoi(op1.obj));
+				            }
+					    }
+					    else if(op1.type==3){
+					        if(op2.type<3){
+					            insertAtPos(obj,"__const__",stoi(op2.obj));
+					            insertAtPos(obj,op1.obj,1);
+					        }
+					        else if(op2.type==3){
+					            insertAtPos(obj,op1.obj,1);
+					            insertAtPos(obj,op2.obj,1);
+					        }
+					        else if(op2.type==6){
+					            insertAtPos(obj,op1.obj,1);
+					            insertAtPos(obj,op2.obj,-1);
+					        }
+					        else if(op2.type==4){
+					            insertAtPos(obj,op1.obj,1);
+					        }
+					    }
+					    else if(op1.type==6){
+					        if(op2.type<3){
+					            insertAtPos(obj,"__const__",stoi(op2.obj));
+					            insertAtPos(obj,op1.obj,-1);
+					        }
+					        else if(op2.type==3){
+					            insertAtPos(obj,op1.obj,-1);
+					            insertAtPos(obj,op2.obj,1);
+					        }
+					        else if(op2.type==6){
+					            insertAtPos(obj,op1.obj,-1);
+					            insertAtPos(obj,op2.obj,-1);
+					        }
+					        else if(op2.type==4){
+					            insertAtPos(obj,op1.obj,-1);
+					        }
+					    }
+					    else if(op1.type==4){
+					        if(op2.type<3){
+					            insertAtPos(obj,"__const__",stoi(op2.obj));
+					        }
+					        else if(op2.type==3){
+					            insertAtPos(obj,op2.obj,1);
+					        }
+					        else if(op2.type==6){
+					            insertAtPos(obj,op2.obj,-1);
+					        }
+					    }
+					}
+					stack_.push(tmp);
+				}
+					
+					/*if((infix[i].obj.compare("*")==0 || infix[i].obj.compare("/")==0)){
 						if(op1.type==3){
 							//cout<<op1.obj<<"\t"<<op2.obj<<"\n";
 							//cout<<"stoi\t"<<op2.obj<<"\n";
-							;insertAtPos(obj,op1.obj,stoi(op2.obj));
+							if(op2.type==6){
+							    insertAtPos(obj,op1.obj,stoi('-'+op2.obj));
+							}
+							else if(op2.type==){
+							    
+							}
+							else{
+							    insertAtPos(obj,op1.obj,stoi(op2.obj));
+						    }
 						}
 						else if(op2.type==3){
 							//cout<<op2.obj<<"\t"<<op1.obj<<"\n";
-
-							insertAtPos(obj,op2.obj,stoi(op1.obj));
+                            if(op1.type==6){
+							    insertAtPos(obj,op2.obj,stoi('-'+op1.obj));
+							}
+							else{
+							    insertAtPos(obj,op2.obj,stoi(op1.obj));
+							}
 						}
 					}
 					else if(infix[i].obj.compare("+")==0){
@@ -457,11 +671,11 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 						}
 						if(op2.type<3){
 							//cout<<"const coeff\t"<<op2.obj<<"\n";
-							insertAtPos(obj,"__const__",stoi('-'+op2.obj));
+							insertAtPos(obj,"__const__",stoi(op2.obj));
 						}
 						if(op1.type==3){
 							//cout<<op1.obj<<"\t-1\n";
-							insertAtPos(obj,op1.obj,1);
+							insertAtPos(obj,op1.obj,-1);
 						}
 						if(op2.type==3){
 							//cout<<op2.obj<<"\t-1\n";
@@ -470,8 +684,8 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 					}
 					struct expr tmp = {"$",4};
 					stack_.push(tmp);
-				}
-			}//cout<<"\n";
+				}*/
+			}cout<<"\n";
 		}
 
 		void parseExpr(Expr* e){
@@ -483,11 +697,20 @@ class LoopPrinter2 : public MatchFinder::MatchCallback {
 				tmp.obj=op.str();
 				tmp.type=0;
 				parseExpr(b->getLHS());
+				infix.push_back(tmp);
 				parseExpr(b->getRHS());  
-				infix.push_back(tmp); 
+				 
 			}
 			if(isa<UnaryOperator>(e)){
-				//handle this
+				UnaryOperator* u = (UnaryOperator*)e;
+				StringRef op = u->getOpcodeStr(u->getOpcode());
+				
+				if(op.str().compare("-")==0){
+				    tmp.obj='%';
+				    tmp.type=5;
+				    infix.push_back(tmp);
+				}
+				parseExpr(u->getSubExpr());  
 			}
 			if(isa<IntegerLiteral>(e)){
 				tmp.obj=to_string(intEvaluate(e));
